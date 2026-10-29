@@ -1,6 +1,6 @@
 # HexSound
 
-Player de música desktop em PySide6, feito porv Hazyn.
+Player de música desktop em PySide6, feito por Hazyn
 
 ## Como rodar
 
