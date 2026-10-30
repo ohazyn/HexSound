@@ -10,3 +10,6 @@ dist/
 .vscode/
 .idea/
 Thumbs.db
+
+HexSoundSetup.exe
+installer_output/

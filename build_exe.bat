@@ -1,20 +1,34 @@
 @echo off
 REM Gera dist\HexSound\HexSound.exe e cria um atalho na Area de Trabalho. Basta dar dois cliques.
+REM Versao corrigida: usa sempre o python de dentro do venv (nao o pip/pyinstaller globais).
 setlocal
 cd /d "%~dp0"
-where python >nul 2>nul
-if errorlevel 1 goto nopy
-if not exist venv\Scripts\activate.bat (
+
+set "PY=venv\Scripts\python.exe"
+
+if not exist "%PY%" (
   echo Criando ambiente...
-  python -m venv venv
-  if errorlevel 1 goto erro
+  where py >nul 2>nul
+  if not errorlevel 1 (
+    py -3.12 -m venv venv 2>nul
+    if not exist "%PY%" py -3.13 -m venv venv 2>nul
+  )
+  if not exist "%PY%" (
+    where python >nul 2>nul
+    if errorlevel 1 goto nopy
+    python -m venv venv
+  )
+  if not exist "%PY%" goto erro
 )
-call venv\Scripts\activate.bat
-python -m pip install --upgrade pip
-pip install -r requirements.txt pyinstaller
+
+"%PY%" --version
+"%PY%" -m pip install --upgrade pip
+"%PY%" -m pip install -r requirements.txt pyinstaller
 if errorlevel 1 goto erro
-pyinstaller --noconsole --noconfirm --clean --name HexSound --icon assets\icon.ico --add-data "assets;assets" --collect-submodules yt_dlp --collect-all yt_dlp_ejs --collect-all imageio_ffmpeg main.py
+
+"%PY%" -m PyInstaller --noconsole --noconfirm --clean --name HexSound --icon assets\icon.ico --add-data "assets;assets" --collect-submodules yt_dlp --collect-all yt_dlp_ejs --collect-all imageio_ffmpeg main.py
 if errorlevel 1 goto erro
+
 powershell -NoProfile -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop')+'\HexSound.lnk'); $s.TargetPath='%~dp0dist\HexSound\HexSound.exe'; $s.WorkingDirectory='%~dp0dist\HexSound'; $s.IconLocation='%~dp0assets\icon.ico'; $s.Save()"
 echo.
 echo Pronto! Atalho "HexSound" criado na Area de Trabalho.
