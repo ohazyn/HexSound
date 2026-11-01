@@ -7,18 +7,35 @@ from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QHBoxLayout, QScroll
 from hexsound.ui.nowstate import now
 from hexsound.ui.widgets import Segmented, _anim, _to
 
-_cache = {}
+from collections import OrderedDict
+from PySide6.QtCore import QSize
+from PySide6.QtGui import QImageReader
+
+_cache = OrderedDict()
+_CACHE_MAX = 600
 
 def load_cover(path, size):
     key = (path, size)
-    if key not in _cache:
-        pm = QPixmap(path) if path else QPixmap()
-        if pm.isNull():
-            _cache[key] = None
-        else:
-            pm = pm.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-            _cache[key] = pm.copy((pm.width() - size) // 2, (pm.height() - size) // 2, size, size)
-    return _cache[key]
+    if key in _cache:
+        _cache.move_to_end(key)
+        return _cache[key]
+    pm = None
+    if path:
+        rd = QImageReader(str(path))
+        rd.setAutoTransform(True)
+        sz = rd.size()
+        if sz.isValid() and min(sz.width(), sz.height()) > size:  # decodifica já pequeno: bem mais rápido
+            rd.setScaledSize(sz.scaled(QSize(size, size), Qt.KeepAspectRatioByExpanding))
+        img = rd.read()
+        if not img.isNull():
+            pm = QPixmap.fromImage(img)
+            if pm.width() != size or pm.height() != size:
+                pm = pm.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                pm = pm.copy((pm.width() - size) // 2, (pm.height() - size) // 2, size, size)
+    _cache[key] = pm
+    if len(_cache) > _CACHE_MAX:
+        _cache.popitem(last=False)
+    return pm
 
 class CoverLabel(QLabel):
     clicked = Signal()

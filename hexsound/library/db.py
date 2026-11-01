@@ -14,6 +14,12 @@ CREATE TABLE IF NOT EXISTS playlist_tracks(
  track_id INTEGER REFERENCES tracks(id) ON DELETE CASCADE, position INTEGER);
 CREATE TABLE IF NOT EXISTS history(track_id INTEGER, played_at REAL);
 """
+INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_tracks_fav ON tracks(favorite);
+CREATE INDEX IF NOT EXISTS idx_tracks_played ON tracks(last_played);
+CREATE INDEX IF NOT EXISTS idx_history_played ON history(played_at);
+CREATE INDEX IF NOT EXISTS idx_pt_playlist ON playlist_tracks(playlist_id, position);
+"""
 ORDER = {"title": "title COLLATE NOCASE", "artist": "artist COLLATE NOCASE",
          "duration": "duration", "imported": "imported_at DESC", "played": "last_played DESC"}
 
@@ -24,7 +30,10 @@ class Library:
         self.conn = sqlite3.connect(str(path))
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys=ON")
+        self.conn.execute("PRAGMA journal_mode=WAL")  # gravações sem travar a leitura
+        self.conn.execute("PRAGMA synchronous=NORMAL")  # bem mais rápido; seguro com WAL
         self.conn.executescript(SCHEMA)
+        self.conn.executescript(INDEXES)
         self.conn.commit()
 
     def add_track(self, title, artist="", album="", duration=0.0, path=None,
@@ -81,10 +90,15 @@ class Library:
                                  " ORDER BY h.played_at DESC LIMIT ?", (limit,)).fetchall()
 
     def check_availability(self):
-        for r in self.conn.execute("SELECT id,path FROM tracks WHERE path IS NOT NULL").fetchall():
-            self.conn.execute("UPDATE tracks SET available=? WHERE id=?",
-                              (int(Path(r["path"]).exists()), r["id"]))
-        self.conn.commit()
+        """grava só as faixas cujo estado mudou, num único commit"""
+        changes = []
+        for r in self.conn.execute("SELECT id,path,available FROM tracks WHERE path IS NOT NULL").fetchall():
+            ok = int(Path(r["path"]).exists())
+            if ok != r["available"]:
+                changes.append((ok, r["id"]))
+        if changes:
+            self.conn.executemany("UPDATE tracks SET available=? WHERE id=?", changes)
+            self.conn.commit()
 
     def create_playlist(self, name, description="", pid=None):
         pid = pid or uuid.uuid4().hex[:12].upper()

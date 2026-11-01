@@ -1,4 +1,5 @@
 """Tela Library: filtros (All/Favorites/Recent/Downloads) e alternância lista/grade."""
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QLabel
 from hexsound.ui.widgets import GlassButton, GlassCombo, SearchField, Segmented
 from hexsound.ui.pages.common import SORTS, h1
@@ -37,7 +38,8 @@ class TrackPage(QWidget):
         row.addWidget(QLabel("Sort by", objectName="muted"))
         row.addWidget(self.sort)
         lay.addLayout(row)
-        self.search.textChanged.connect(self.refresh)
+        self._deb = QTimer(self, singleShot=True, interval=180, timeout=self.refresh)  # espera parar de digitar
+        self.search.textChanged.connect(lambda _t: self._deb.start())
         self.sort.currentIndexChanged.connect(self.refresh)
         self.table, self.grid = TrackTable(), TrackGrid()
         self.views = {"list": self.table, "grid": self.grid}

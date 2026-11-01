@@ -1,5 +1,5 @@
 """Tela Search: busca de faixas e playlists."""
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QListWidget
 from hexsound.ui import icons
@@ -28,7 +28,8 @@ class SearchPage(QWidget):
         lay.setSpacing(12)
         lay.addWidget(h1("Search"))
         self.q = SearchField("Songs, artists, albums and playlists")
-        self.q.textChanged.connect(self.refresh)
+        self._deb = QTimer(self, singleShot=True, interval=180, timeout=self.refresh)  # espera parar de digitar
+        self.q.textChanged.connect(lambda _t: self._deb.start())
         lay.addWidget(self.q)
         self.empty = QWidget()
         el = QVBoxLayout(self.empty)
