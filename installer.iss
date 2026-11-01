@@ -4,7 +4,7 @@
 ; Pre-requisito: ter gerado dist\HexSound com o build_exe.bat
 
 #define MyAppName "HexSound"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppExeName "HexSound.exe"
 
 [Setup]
