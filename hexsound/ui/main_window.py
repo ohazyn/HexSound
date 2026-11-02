@@ -1,12 +1,15 @@
+import os
 import time
 from pathlib import Path
 import sys
-from PySide6.QtCore import Qt, QTimer, QSize, QPropertyAnimation
-from PySide6.QtGui import QShortcut, QKeySequence, QIcon, QPixmap
+from PySide6.QtCore import Qt, QTimer, QSize, QPropertyAnimation, QUrl
+from PySide6.QtGui import QShortcut, QKeySequence, QIcon, QPixmap, QDesktopServices
 from PySide6.QtWidgets import (QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QLabel,
                                QStackedWidget, QPushButton, QApplication, QLineEdit, QSystemTrayIcon, QMenu,
                                QGraphicsOpacityEffect, QSizePolicy)
+from hexsound import __version__
 from hexsound.app.paths import resource
+from hexsound.app.updates import UpdateCheck, is_newer
 from hexsound.importers.files import FileImportWorker
 from hexsound.importers.links import classify
 from hexsound.player.engine import Engine
@@ -111,6 +114,10 @@ class MainWindow(QMainWindow):
         self.lib.check_availability()
         self.go_page("Home")
         self.restore_session()
+        self._upd, self._upd_manual = UpdateCheck(self), False
+        self._upd.result.connect(self._on_update_result)
+        if self.settings["check_updates"] and not os.environ.get("HEXSOUND_NO_MODAL"):
+            QTimer.singleShot(4000, self.check_updates)  # depois que a janela já abriu
 
     def open_menu(self):
         if time.monotonic() - self.menu.closed_at < 0.25:
@@ -380,6 +387,29 @@ class MainWindow(QMainWindow):
         self.settings.set("theme", name)
         T.configure(name=name)
         self.apply_look(persist=False)
+    def check_updates(self, manual=False):
+        """consulta o GitHub em segundo plano; manual=True também avisa quando não há nada novo"""
+        self._upd_manual = self._upd_manual or manual
+        self._upd.start()
+    def _on_update_result(self, info):
+        manual, self._upd_manual = self._upd_manual, False
+        self._on_update(info, manual)
+    def _on_update(self, info, manual):
+        from hexsound.ui.dialogs import confirm, notify
+        if info is None:
+            if manual:
+                notify(self, "Could not check", "HexSound could not reach GitHub. Check your internet connection and try again.", "warn")
+            return
+        if not is_newer(info["tag"]):
+            if manual:
+                notify(self, "You're up to date", f"HexSound {__version__} is the latest version.", "success")
+            return
+        if not manual and self.settings["update_seen"] == info["tag"]:
+            return  # já avisou dessa versão: não incomoda a cada abertura
+        self.settings.set("update_seen", info["tag"])
+        if confirm(self, "Update available", f"HexSound {info['version']} is out. You have {__version__}.\n\nDownload the new installer and run it over your current version. Your library and settings are kept.",
+                   ok="Download", cancel="Later", icon="download"):
+            QDesktopServices.openUrl(QUrl(info["url"]))
     def log_error(self, msg):
         self.error_log = (self.error_log + [f"{time.strftime('%H:%M:%S')} {msg}"])[-100:]
     def focus_search(self):

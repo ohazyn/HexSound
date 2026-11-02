@@ -3,7 +3,7 @@ from pathlib import Path
 from hexsound.app.paths import DATA_DIR
 
 DEFAULTS = {"theme": "dark", "download_dir": str(DATA_DIR / "downloads"), "shared_dir": str(DATA_DIR / "shared"),
-            "tray": False, "notify": True, "resume": True, "autostart": False, "volume": 70, "session": {},
+            "tray": False, "notify": True, "resume": True, "autostart": False, "check_updates": True, "update_seen": "", "volume": 70, "session": {},
             "accent": "Violet", "glass": 60, "reduce_effects": False, "audio_device": "", "library_view": "list",
             "accent_custom": "#8b7cf6", "bg_mode": "auto", "bg_color": "#1b1630", "bg_image": "", "bg_blur": 18, "bg_dim": 35, "bg_animate": True}
 

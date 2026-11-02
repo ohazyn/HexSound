@@ -437,3 +437,28 @@ def test_play_buttons_animate_to_pause(win):
     now.set_playing(False)
     QTest.qWait(450)
     assert abs(c._m) < 0.01
+
+def test_update_prompt_shown_once(win, monkeypatch):
+    import hexsound.ui.main_window as M
+    opened, asked = [], []
+    monkeypatch.setattr(M.QDesktopServices, "openUrl", lambda u: opened.append(u.toString()))
+    import hexsound.ui.dialogs as D
+    monkeypatch.setattr(D, "confirm", lambda *a, **k: asked.append(1) or True)
+    info = {"tag": "v99.0.0", "version": "99.0.0", "url": "https://github.com/ohazyn/HexSound/releases/tag/v99.0.0"}
+    win._on_update(info, manual=False)
+    assert asked and opened == [info["url"]] and win.settings["update_seen"] == "v99.0.0"
+    win._on_update(info, manual=False)  # mesma versão: não pergunta de novo sozinho
+    assert len(asked) == 1
+    win._on_update(info, manual=True)   # pelo botão "Check now" pergunta sempre
+    assert len(asked) == 2
+
+def test_update_none_when_current_or_failed(win, monkeypatch):
+    import hexsound.ui.dialogs as D
+    asked = []
+    monkeypatch.setattr(D, "confirm", lambda *a, **k: asked.append(1) or True)
+    monkeypatch.setattr(D, "notify", lambda *a, **k: asked.append("n"))
+    win._on_update(None, manual=False)
+    win._on_update({"tag": "v1.0.0", "version": "1.0.0", "url": ""}, manual=False)
+    assert asked == []                       # automático e sem novidade: silêncio
+    win._on_update(None, manual=True)
+    assert asked == ["n"]                    # manual avisa que falhou

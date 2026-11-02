@@ -232,6 +232,10 @@ class SettingsPage(QWidget):
         S["Playback"].add(Row("Resume last session", "Reopen the previous queue and position when HexSound starts.", self._toggle("resume"), "startup restore"))
         S["Playback"].add(Row("Track change notifications", "Show a notification when the song changes while the window is in the background. Needs the tray icon (Advanced).",
                               self._toggle("notify"), "popup toast"))
+        S["Playback"].add(Row("Check for updates", "Look for a new HexSound version on GitHub when the app starts. Nothing is downloaded or installed without your OK.",
+                              self._toggle("check_updates"), "update version release new"))
+        S["Playback"].add(Row("Check for updates now", "See if a newer version is available.",
+                              self._btn("Check now", "refresh", lambda: win.check_updates(manual=True)), "update version release new"))
         self.vol = GlassSlider(accent=False)
         self.vol.setRange(0, 100)
         self.vol.setFixedWidth(190)
