@@ -232,6 +232,8 @@ class SettingsPage(QWidget):
         S["Playback"].add(Row("Resume last session", "Reopen the previous queue and position when HexSound starts.", self._toggle("resume"), "startup restore"))
         S["Playback"].add(Row("Track change notifications", "Show a notification when the song changes while the window is in the background. Needs the tray icon (Advanced).",
                               self._toggle("notify"), "popup toast"))
+        S["Playback"].add(Row("Windows media controls", "Show the current song in the Windows volume panel and lock screen, and let media keys work while HexSound is in the background.",
+                              self._toggle("media_controls", lambda: win.media.set_enabled(bool(win.settings["media_controls"]))), "smtc media keys panel lock screen taskbar"))
         S["Playback"].add(Row("Check for updates", "Look for a new HexSound version on GitHub when the app starts. Nothing is downloaded or installed without your OK.",
                               self._toggle("check_updates"), "update version release new"))
         S["Playback"].add(Row("Check for updates now", "See if a newer version is available.",
@@ -514,6 +516,7 @@ class SettingsPage(QWidget):
         lib = self.win.lib
         c = lambda q: lib.conn.execute(q).fetchone()[0]
         lines = [f"HexSound {__version__} | Python {platform.python_version()} | PySide6 {PySide6.__version__} | mutagen {mutagen.version_string} | yt-dlp {ytv}",
-                 f"Data folder: {DATA_DIR}", f"Tracks: {c('SELECT COUNT(*) FROM tracks')} ({c('SELECT COUNT(*) FROM tracks WHERE available=0')} unavailable) | Playlists: {c('SELECT COUNT(*) FROM playlists')}",
+                 f"Data folder: {DATA_DIR}", "Windows media controls: " + ("on" if self.win.media.available else f"off ({self.win.media.error or 'not Windows or winrt missing'})"),
+                 f"Tracks: {c('SELECT COUNT(*) FROM tracks')} ({c('SELECT COUNT(*) FROM tracks WHERE available=0')} unavailable) | Playlists: {c('SELECT COUNT(*) FROM playlists')}",
                  "", "Recent errors:"] + (self.win.error_log[-20:] or ["(none)"])
         self.diag.setPlainText("\n".join(lines))

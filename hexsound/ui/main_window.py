@@ -13,6 +13,7 @@ from hexsound.app.updates import UpdateCheck, is_newer
 from hexsound.importers.files import FileImportWorker
 from hexsound.importers.links import classify
 from hexsound.player.engine import Engine
+from hexsound.player.mediacontrols import MediaControls
 from hexsound.player.queue import PlayQueue
 from hexsound.ui.home import HomePage, CoverLabel
 from hexsound.ui.now_playing import NowPlaying
@@ -52,6 +53,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon(str(resource("assets/icon.png"))))
         self.setStyleSheet(build_qss())
         self.engine, self.queue, self.cur = Engine(), PlayQueue(), None
+        self.media, self._media_last = MediaControls(self, enabled=bool(settings["media_controls"])), (None, 0.0)
         now.reset()
         root = self.root = Backdrop()
         root.setObjectName("root")
@@ -238,14 +240,25 @@ class MainWindow(QMainWindow):
         self.seek.sliderMoved.connect(e.seek)
         e.set_device(self.settings["audio_device"])
         e.position.connect(self._on_pos)
-        e.duration.connect(lambda ms: (self.seek.setRange(0, ms), self.t_tot.setText(fmt(ms / 1000))))
+        e.duration.connect(lambda ms: (self.seek.setRange(0, ms), self.t_tot.setText(fmt(ms / 1000)), self._media_timeline()))
         e.state.connect(self._on_state)
         e.finished.connect(lambda: self.go(self.queue.next(auto=True)))
         e.error.connect(lambda m: (self.title.setText(f"Playback error: {m}"), self.log_error(m)))
         sc = lambda keys, fn: [QShortcut(QKeySequence(k), self, activated=fn) for k in keys]
-        sc([Qt.Key_Space, Qt.Key_MediaTogglePlayPause, Qt.Key_MediaPlay], e.toggle)
-        sc(["Ctrl+Right", Qt.Key_MediaNext], b["next"].click)
-        sc(["Ctrl+Left", Qt.Key_MediaPrevious], b["prev"].click)
+        sc([Qt.Key_Space], e.toggle)
+        sc([Qt.Key_MediaTogglePlayPause, Qt.Key_MediaPlay], lambda: self._media_key("qt", e.toggle))
+        sc(["Ctrl+Right"], b["next"].click)
+        sc([Qt.Key_MediaNext], lambda: self._media_key("qt", b["next"].click))
+        sc(["Ctrl+Left"], b["prev"].click)
+        sc([Qt.Key_MediaPrevious], lambda: self._media_key("qt", b["prev"].click))
+        m = self.media
+        m.play_requested.connect(lambda: self._media_cmd("play"))
+        m.pause_requested.connect(lambda: self._media_cmd("pause"))
+        m.stop_requested.connect(lambda: self._media_cmd("pause"))
+        m.next_requested.connect(lambda: self._media_key("smtc", b["next"].click))
+        m.previous_requested.connect(lambda: self._media_key("smtc", b["prev"].click))
+        m.seek_requested.connect(lambda ms: (e.seek(ms), self._media_timeline(ms)))
+        self.seek.sliderReleased.connect(lambda: self._media_timeline())
         sc(["Ctrl+Up"], lambda: self.vol.setValue(min(100, self.vol.value() + 5)))
         sc(["Ctrl+Down"], lambda: self.vol.setValue(max(0, self.vol.value() - 5)))
         sc(["Ctrl+S"], b["shuf"].click)
@@ -265,7 +278,32 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(700, self._sync_play_icon)
     def _sync_play_icon(self):
         self.btn["play"].set_icon("pause" if now.playing else "play")
+    def _media_key(self, src, fn):
+        """a mesma tecla de mídia pode chegar pelo Qt e pelo Windows: a segunda, em até 0.4 s, é ignorada"""
+        last_src, last_t = self._media_last
+        t = time.monotonic()
+        if last_src not in (None, src) and t - last_t < 0.4:
+            return
+        self._media_last = (src, t)
+        fn()
+    def _media_cmd(self, action):
+        """play/pause vindos do Windows: só agem se o estado for diferente (nunca 'alternam')"""
+        t = time.monotonic()
+        last_src, last_t = self._media_last
+        if last_src not in (None, "smtc") and t - last_t < 0.4:
+            return
+        self._media_last = ("smtc", t)
+        if self.cur is None:
+            return
+        if (action == "play") != bool(now.playing):
+            self.engine.toggle()
+    def _media_timeline(self, pos=None):
+        self.media.set_timeline(self._pos if pos is None else pos, self.seek.maximum())
     def _on_state(self, playing):
+        if playing:
+            self.page["Search"].stop_preview(resume=False)  # o usuário voltou a tocar a biblioteca: a prévia cede
+        self.media.set_playing(playing)
+        self._media_timeline()
         self.btn["play"].set_icon("pause" if playing else "play")
         self.btn["play"].setToolTip("Pause (Space)" if playing else "Play (Space)")
         now.set_playing(playing)
@@ -381,6 +419,7 @@ class MainWindow(QMainWindow):
             self.hide()
             return
         self.settings.save()
+        self.media.shutdown()
         e.accept()
         QApplication.quit()
     def apply_theme(self, name):
@@ -426,9 +465,13 @@ class MainWindow(QMainWindow):
         t.fwd.clicked.connect(lambda: self.step(1))
         self.page["Search"].q.hide()
         t.search.textChanged.connect(self._global_search)
-        t.search.returnPressed.connect(lambda: self.go_page("Search"))
+        t.search.returnPressed.connect(self._global_enter)
         QShortcut(QKeySequence("Alt+Left"), self, activated=t.back.click)
         QShortcut(QKeySequence("Alt+Right"), self, activated=t.fwd.click)
+    def _global_enter(self):
+        """Enter na busca de cima: abre a tela Search e procura também no YouTube/SoundCloud"""
+        self.go_page("Search")
+        self.page["Search"].search_online()
     def _global_search(self, text):
         self.page["Search"].q.setText(text)
         if text.strip() and self.stack.currentWidget() is not self.page["Search"]:
@@ -529,6 +572,7 @@ class MainWindow(QMainWindow):
             self.lib.mark_played(tid)
         self.title.setText(t["title"])
         self.artist.setText(t["artist"])
+        self.media.set_track(t["title"], t["artist"], t["album"], t["cover"])
         self._update_fav()
         self.bar_cover.set_cover(t["cover"])
         ambient.set_from_cover(t["cover"])

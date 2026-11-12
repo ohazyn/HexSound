@@ -301,6 +301,76 @@ def smart_meta(info: dict, fallback: dict):
     return title.strip() or raw or "Unknown", artist
 
 
+# prévia: o primeiro cliente costuma dispensar o desafio de JavaScript do YouTube (a parte mais lenta); os outros são reserva
+_PREVIEW_CLIENTS = [["android_vr"], None, ["tv"], ["web_safari"], ["mweb"]]
+
+
+def _stream_url(entry: dict, clients):
+    """só o link direto do áudio (sem baixar nada) e os cabeçalhos que o servidor exige"""
+    import yt_dlp
+
+    def go(opts):
+        opts.update({"format": "bestaudio[ext=m4a]/bestaudio/best", "noplaylist": True})  # m4a: dá pra pular direto pro trecho
+        with yt_dlp.YoutubeDL(opts) as y:
+            return y.extract_info(entry["url"], download=False)
+
+    info = _run(lambda o: go(_with_client(o, clients))) or {}
+    if info.get("entries"):
+        info = info["entries"][0]
+    url = info.get("url")
+    if not url or info.get("fragments") or str(info.get("protocol") or "").startswith(("http_dash", "ism")):
+        raise RuntimeError("este formato não permite prévia")
+    return url, info.get("http_headers") or {}
+
+
+def _ffmpeg_clip(ff: str, url: str, headers: dict, start: float, seconds: float, out: Path):
+    """uma única passada: o ffmpeg vai direto ao trecho e já grava em mp3 (sem baixar o resto, sem ffprobe)"""
+    import subprocess
+    hdr = "".join(f"{k}: {v}\r\n" for k, v in (headers or {}).items() if "\n" not in str(v) and "\r" not in str(v))
+    cmd = [ff, "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+    if hdr:
+        cmd += ["-headers", hdr]
+    cmd += ["-rw_timeout", "15000000", "-ss", f"{start:.2f}", "-t", f"{seconds:.2f}", "-i", url,
+            "-vn", "-sn", "-dn", "-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", str(out)]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=45, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("tempo esgotado ao carregar a prévia")
+    if r.returncode != 0:
+        tail = (r.stderr or "").strip().splitlines()
+        raise RuntimeError("ffmpeg: " + (tail[-1] if tail else "erro ao gerar a prévia"))
+
+
+def download_preview(entry: dict, dest: Path, start: float = 0.0, seconds: float = 30.0, stem=None) -> str:
+    """gera um mp3 de `seconds` segundos a partir de `start`: a prévia antes de adicionar à biblioteca"""
+    import os
+    dest.mkdir(parents=True, exist_ok=True)
+    ff = ffmpeg_path()
+    if not ff:
+        raise RuntimeError("ffmpeg não encontrado (pip install imageio-ffmpeg, ou instale o ffmpeg) — preciso dele para a prévia")
+    stem = stem or f"preview_{entry['source']}_{entry['id']}"
+    out, tmp = dest / f"{stem}.mp3", dest / f"{stem}.part.mp3"
+    last = None
+    for clients in (_PREVIEW_CLIENTS if entry.get("source") == "youtube" or "youtu" in entry.get("url", "") else [None]):
+        try:
+            url, headers = _stream_url(entry, clients)
+            _ffmpeg_clip(ff, url, headers, start, seconds, tmp)
+            last = None
+            break
+        except Exception as e:
+            last = e
+            tmp.unlink(missing_ok=True)
+            if not _blocked(e):
+                break
+    if last is not None:
+        raise last
+    if not tmp.exists() or tmp.stat().st_size < 2000:
+        tmp.unlink(missing_ok=True)
+        raise RuntimeError("a prévia não foi gerada")
+    os.replace(tmp, out)
+    return str(out)
+
+
 def download_audio(entry: dict, dest: Path, progress=lambda pct, stage="download": None, stem=None) -> str:
     """baixa e converte pra mp3 192k; retorna o caminho"""
     import yt_dlp

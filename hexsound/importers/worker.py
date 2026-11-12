@@ -28,13 +28,14 @@ class LinkWorker(QThread):
     known = Signal(dict)  # faixa que já estava na biblioteca: {"track_id": n} ou {"source","id"}
     done = Signal(int, int, int)  # baixadas, falhas, ignoradas (duplicadas)
 
-    def __init__(self, text, known_ids, dest, library_songs=(), workers=WORKERS, idx_base=0):
-        """known_ids: {(source, source_id)}"""
+    def __init__(self, text, known_ids, dest, library_songs=(), workers=WORKERS, idx_base=0, entries=None):
+        """known_ids: {(source, source_id)}. entries: faixas já lidas (ex.: resultado de busca); dispensa ler links do texto"""
         super().__init__()
         self.text, self.known_ids, self.dest = text, set(known_ids), Path(dest)
         self.songs = list(library_songs)
         self.workers = workers
         self.idx_base = idx_base
+        self.preset = None if entries is None else [dict(e) for e in entries]
         self._cancel = threading.Event()
         self._lock = threading.Lock()
         self._finished = 0
@@ -66,12 +67,17 @@ class LinkWorker(QThread):
             self.meta.emit(found[0]["list_title"])
         return found
 
-    def _run(self):
+    def _collect(self):
+        """lê os links do texto (ou usa as faixas já prontas); None = nada a fazer"""
+        if self.preset is not None:
+            if any(e.get("source") == "youtube" for e in self.preset):
+                ensure_js_runtime(self.log.emit)
+            return self.preset
         lines = extract_links(self.text)
         if not lines:
             self.log.emit("Could not read link: não encontrei nenhum link do YouTube, SoundCloud ou Spotify no texto.")
             self.done.emit(0, 0, 0)
-            return
+            return None
         if any(classify(l).startswith("youtube") or classify(l) == "spotify" for l in lines):
             ensure_js_runtime(self.log.emit)
             age = links.ytdlp_age_days()
@@ -85,6 +91,12 @@ class LinkWorker(QThread):
                 entries += self._read(line)
             except Exception as e:
                 self.log.emit(f"Could not read link: {clean_error(e)}")
+        return entries
+
+    def _run(self):
+        entries = self._collect()
+        if entries is None:
+            return
         for i, it in enumerate(entries):
             it["idx"] = self.idx_base + i
         self.queue.emit([dict(it) for it in entries])

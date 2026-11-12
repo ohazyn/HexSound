@@ -33,6 +33,8 @@ class Engine(QObject):
         self.p.play() if autoplay else self.p.pause()
     def toggle(self):
         self.p.pause() if self.p.playbackState() == QMediaPlayer.PlayingState else self.p.play()
+    def stop(self):
+        self.p.stop()
     def seek(self, ms):
         self.p.setPosition(ms)
     def volume(self, v):

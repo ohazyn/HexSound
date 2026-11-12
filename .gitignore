@@ -13,3 +13,5 @@ Thumbs.db
 
 HexSoundSetup.exe
 installer_output/
+*.patch
+tinytask.ini

@@ -21,6 +21,10 @@ Pra gerar o .exe no Windows é só rodar o `build_exe.bat` (sai em `dist\HexSoun
 - Ctrl+S shuffle, Ctrl+R repeat, Ctrl+F busca, Ctrl+Q sair
 - Ctrl+V: cola arquivos copiados ou um link
 
+## Controles de mídia do Windows
+
+O app aparece no painel de volume e na tela de bloqueio (título, artista, capa, play/pause, próxima, anterior e barra de progresso), e as teclas de mídia funcionam com ele em segundo plano. Usa o pacote `winrt` (só no Windows); se ele faltar, o app abre normalmente sem esse recurso. Dá pra desligar em Settings → Playback.
+
 ## Onde ficam os dados
 
 Tudo em `%USERPROFILE%\.hexsound` (banco, configurações, capas, downloads, playlists compartilhadas).
@@ -42,7 +46,6 @@ Playlists → Export gera um `.hexplaylist`. A cópia também vai pra pasta "Sha
 
 ## O que ainda falta
 
-- sem integração com os controles de mídia do Windows (as teclas de mídia só funcionam com a janela em foco)
 - arrastar pra reordenar só funciona em playlist; na fila é remover e adicionar de novo
 
 ## Código

@@ -16,6 +16,8 @@ class FakeEngine(QObject):  # sem áudio real: roda em CI/headless
         pass
     def toggle(self):
         pass
+    def stop(self):
+        pass
     def seek(self, ms):
         pass
     def volume(self, v):
@@ -462,3 +464,41 @@ def test_update_none_when_current_or_failed(win, monkeypatch):
     assert asked == []                       # automático e sem novidade: silêncio
     win._on_update(None, manual=True)
     assert asked == ["n"]                    # manual avisa que falhou
+
+def _fake_toggle(win, monkeypatch):
+    calls = []
+    monkeypatch.setattr(win.engine, "toggle", lambda: calls.append("toggle"))
+    return calls
+
+def test_media_play_pause_nao_alterna(win, monkeypatch):
+    from hexsound.ui.nowstate import now
+    calls = _fake_toggle(win, monkeypatch)
+    win.cur = None
+    win._media_cmd("play")
+    assert calls == []                       # sem faixa carregada: ignora
+    win.cur = {"id": 1}
+    now.playing = False
+    win._media_last = (None, 0.0)
+    win._media_cmd("pause")
+    assert calls == []                       # já está pausado: pedir pause não faz nada
+    win._media_cmd("play")
+    assert calls == ["toggle"]               # estava pausado: toca
+    now.playing = True
+    win._media_last = (None, 0.0)
+    win._media_cmd("play")
+    assert calls == ["toggle"]               # já está tocando
+    win._media_cmd("pause")
+    assert calls == ["toggle", "toggle"]
+    now.playing = False
+
+def test_media_tecla_duplicada_so_age_uma_vez(win):
+    hits = []
+    win._media_last = (None, 0.0)
+    win._media_key("qt", lambda: hits.append("qt"))
+    win._media_key("smtc", lambda: hits.append("smtc"))   # mesma tecla chegando pelo outro caminho
+    assert hits == ["qt"]
+    win._media_key("qt", lambda: hits.append("qt2"))      # duas teclas seguidas da mesma origem valem
+    assert hits == ["qt", "qt2"]
+    win._media_last = ("qt", 0.0)                         # passou tempo suficiente
+    win._media_key("smtc", lambda: hits.append("smtc2"))
+    assert hits[-1] == "smtc2"
